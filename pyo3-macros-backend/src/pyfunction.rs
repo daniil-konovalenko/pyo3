@@ -27,6 +27,11 @@ pub struct PyFunctionAttr {
     pub pass_module: bool,
 }
 
+#[derive(Clone, PartialEq, Debug)]
+pub struct PyFunctionArgAttr {
+    pub from_py_with: Option<syn::ExprPath>,
+}
+
 impl syn::parse::Parse for PyFunctionAttr {
     fn parse(input: &ParseBuffer) -> syn::Result<Self> {
         let attr = Punctuated::<NestedMeta, syn::Token![,]>::parse_terminated(input)?;
@@ -204,7 +209,48 @@ pub fn parse_name_attribute(attrs: &mut Vec<syn::Attribute>) -> syn::Result<Opti
 pub fn build_py_function(ast: &mut syn::ItemFn, args: PyFunctionAttr) -> syn::Result<TokenStream> {
     let python_name =
         parse_name_attribute(&mut ast.attrs)?.unwrap_or_else(|| ast.sig.ident.unraw());
+
     add_fn_to_module(ast, python_name, args)
+}
+
+/// Parses #[pyo3(from_python_with = "func")]
+pub fn parse_arg_attributes(cap: &mut syn::PatType) -> syn::Result<PyFunctionArgAttr> {
+    let mut from_py_with = None;
+    let mut new_attrs = Vec::new();
+
+    for attr in cap.attrs.iter() {
+        if let Ok(syn::Meta::List(meta_list)) = attr.parse_meta() {
+            if meta_list.path.is_ident("pyo3") {
+                for meta in meta_list.nested.iter() {
+                    if let syn::NestedMeta::Meta(syn::Meta::NameValue(name_value)) = meta {
+                        if name_value.path.is_ident("from_py_with") {
+                            if let syn::Lit::Str(string_literal) = &name_value.lit {
+                                let expr_path = string_literal.parse::<syn::ExprPath>()?;
+                                from_py_with = Some(expr_path);
+                            } else {
+                                return Err(syn::Error::new_spanned(
+                                    &name_value.lit,
+                                    "value should be a string literal",
+                                ));
+                            }
+                        } else {
+                            return Err(syn::Error::new_spanned(
+                                name_value,
+                                "Only from_py_with is supported",
+                            ));
+                        };
+                    }
+                }
+            } else {
+                new_attrs.push(attr.clone())
+            }
+        } else {
+            new_attrs.push(attr.clone())
+        }
+    }
+    cap.attrs.clear();
+    cap.attrs.extend(new_attrs);
+    Ok(PyFunctionArgAttr { from_py_with })
 }
 
 #[cfg(test)]

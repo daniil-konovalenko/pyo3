@@ -1,11 +1,14 @@
 // Copyright (c) 2017-present PyO3 Project and Contributors
 
 use crate::pyfunction::Argument;
-use crate::pyfunction::{parse_name_attribute, PyFunctionAttr};
+use crate::pyfunction::{
+    parse_arg_attributes, parse_name_attribute, PyFunctionArgAttr, PyFunctionAttr,
+};
 use crate::utils;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use quote::{quote, quote_spanned};
+use std::ops::Deref;
 use syn::ext::IdentExt;
 use syn::spanned::Spanned;
 
@@ -17,6 +20,7 @@ pub struct FnArg<'a> {
     pub ty: &'a syn::Type,
     pub optional: Option<&'a syn::Type>,
     pub py: bool,
+    pub attrs: PyFunctionArgAttr,
 }
 
 #[derive(Clone, PartialEq, Debug, Copy, Eq)]
@@ -104,7 +108,7 @@ pub fn get_return_info(output: &syn::ReturnType) -> syn::Type {
     }
 }
 
-pub fn parse_method_receiver(arg: &syn::FnArg) -> syn::Result<SelfType> {
+pub fn parse_method_receiver(arg: &mut syn::FnArg) -> syn::Result<SelfType> {
     match arg {
         syn::FnArg::Receiver(recv) => Ok(SelfType::Receiver {
             mutable: recv.mutability.is_some(),
@@ -116,7 +120,7 @@ pub fn parse_method_receiver(arg: &syn::FnArg) -> syn::Result<SelfType> {
 impl<'a> FnSpec<'a> {
     /// Parser function signature and function attributes
     pub fn parse(
-        sig: &'a syn::Signature,
+        sig: &'a mut syn::Signature,
         meth_attrs: &mut Vec<syn::Attribute>,
         allow_custom_name: bool,
     ) -> syn::Result<FnSpec<'a>> {
@@ -128,12 +132,13 @@ impl<'a> FnSpec<'a> {
         } = parse_method_attributes(meth_attrs, allow_custom_name)?;
 
         let mut arguments = Vec::new();
-        let mut inputs_iter = sig.inputs.iter();
-
-        let mut parse_receiver = |msg: &'static str| {
+        let inputs_empty = sig.inputs.is_empty();
+        let sig_cp = sig.clone(); // TODO
+        let mut inputs_iter = sig.inputs.iter_mut();
+        let parse_receiver = |msg: &'static str| {
             inputs_iter
                 .next()
-                .ok_or_else(|| syn::Error::new_spanned(sig, msg))
+                .ok_or_else(|| syn::Error::new_spanned(sig_cp, msg))
                 .and_then(parse_method_receiver)
         };
 
@@ -149,7 +154,7 @@ impl<'a> FnSpec<'a> {
         let fn_type = match fn_type_attr {
             Some(MethodTypeAttribute::StaticMethod) => FnType::FnStatic,
             Some(MethodTypeAttribute::ClassAttribute) => {
-                if !sig.inputs.is_empty() {
+                if !inputs_empty {
                     return Err(syn::Error::new_spanned(
                         name,
                         "Class attribute methods cannot take arguments",
@@ -196,16 +201,20 @@ impl<'a> FnSpec<'a> {
                         "Unexpected receiver for method",
                     ));
                 }
-                syn::FnArg::Typed(syn::PatType { pat, ty, .. }) => {
-                    let (ident, by_ref, mutability) = match &**pat {
+                syn::FnArg::Typed(cap) => {
+                    let arg_attrs = parse_arg_attributes(cap)?;
+                    let (ident, by_ref, mutability) = match *cap.pat {
                         syn::Pat::Ident(syn::PatIdent {
-                            ident,
-                            by_ref,
-                            mutability,
+                            ref ident,
+                            ref by_ref,
+                            ref mutability,
                             ..
                         }) => (ident, by_ref, mutability),
                         _ => {
-                            return Err(syn::Error::new_spanned(pat, "unsupported argument"));
+                            return Err(syn::Error::new_spanned(
+                                cap.pat.clone(),
+                                "unsupported argument",
+                            ));
                         }
                     };
 
@@ -213,9 +222,10 @@ impl<'a> FnSpec<'a> {
                         name: ident,
                         by_ref,
                         mutability,
-                        ty,
-                        optional: utils::option_type_argument(ty),
-                        py: utils::is_python(ty),
+                        ty: cap.ty.deref(),
+                        optional: utils::option_type_argument(cap.ty.deref()),
+                        py: utils::is_python(cap.ty.deref()),
+                        attrs: arg_attrs,
                     });
                 }
             }

@@ -1,9 +1,9 @@
 #[cfg(not(Py_LIMITED_API))]
 use pyo3::buffer::PyBuffer;
 use pyo3::prelude::*;
-use pyo3::types::PyCFunction;
 #[cfg(not(Py_LIMITED_API))]
 use pyo3::types::PyFunction;
+use pyo3::types::{PyCFunction, PyDateTime};
 use pyo3::{raw_pycfunction, wrap_pyfunction};
 
 mod common;
@@ -109,6 +109,41 @@ fn test_functions_with_function_args() {
             "#
         );
     }
+}
+
+fn datetime_to_timestamp(dt: &PyDateTime) -> PyResult<i64> {
+    Python::with_gil(|py| {
+        let ts: f64 = dt.call_method0("timestamp")?.extract()?;
+
+        Ok(ts as i64)
+    })
+}
+
+#[pyfunction]
+fn function_with_custom_conversion(
+    #[pyo3(from_py_with = "datetime_to_timestamp")] timestamp: i64,
+) -> i64 {
+    timestamp
+}
+
+#[test]
+fn test_function_with_custom_conversion() {
+    let gil = Python::acquire_gil();
+    let py = gil.python();
+
+    let custom_conv_func = wrap_pyfunction!(function_with_custom_conversion)(py).unwrap();
+
+    pyo3::py_run!(
+        py,
+        custom_conv_func,
+        r#"
+        import datetime
+        
+        dt = datetime.datetime(2021, 1, 31, 0, 0, 0)
+        
+        assert custom_conv_func(dt) == 1612040400
+        "#
+    )
 }
 
 #[test]
