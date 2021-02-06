@@ -1,3 +1,0 @@
-(function() {var implementors = {};
-implementors["pyo3"] = [{"text":"impl&lt;'de, T&gt; Deserialize&lt;'de&gt; for Py&lt;T&gt; <span class=\"where fmt-newline\">where<br>&nbsp;&nbsp;&nbsp;&nbsp;T: Into&lt;PyClassInitializer&lt;T&gt;&gt; + PyClass + Deserialize&lt;'de&gt;,<br>&nbsp;&nbsp;&nbsp;&nbsp;&lt;T as PyTypeInfo&gt;::BaseLayout: PyBorrowFlagLayout&lt;&lt;T as PyTypeInfo&gt;::BaseType&gt;,&nbsp;</span>","synthetic":false,"types":[]}];
-if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
