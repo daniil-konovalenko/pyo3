@@ -355,18 +355,6 @@ where
     }
 }
 
-macro_rules! py_dict {
-    ($py:ident, {$key:literal : $value:expr}) => {
-        [($key, $value)].into_py_dict($py)
-    };
-
-    ($py:ident, {$key:literal : $value:expr, $($keys:literal : $values:expr),+}) => {{
-        let dct = py_dict!($py, {$($keys : $values),+});
-        dct.set_item($key, $value).expect("failed to set item on dict");
-        dct
-    }};
-}
-
 #[cfg(feature = "hashbrown")]
 mod hashbrown_hashmap_conversion {
     use super::*;
@@ -469,41 +457,6 @@ mod test {
     use crate::Python;
     use crate::{PyTryFrom, ToPyObject};
     use std::collections::{BTreeMap, HashMap};
-
-    #[test]
-    fn test_dict_macro() {
-        let gil = Python::acquire_gil();
-        let py = gil.python();
-
-        let single_elem_dict = py_dict!(py, { "a": 2 });
-        assert_eq!(
-            2,
-            single_elem_dict
-                .get_item("a")
-                .unwrap()
-                .extract::<i32>()
-                .unwrap()
-        );
-
-        let value = "value";
-        let multi_elem_dict = py_dict!(py, {"key1": value, 143: "abcde"});
-        assert_eq!(
-            "value",
-            multi_elem_dict
-                .get_item("key1")
-                .unwrap()
-                .extract::<&str>()
-                .unwrap()
-        );
-        assert_eq!(
-            "abcde",
-            multi_elem_dict
-                .get_item(143)
-                .unwrap()
-                .extract::<&str>()
-                .unwrap()
-        );
-    }
 
     #[test]
     fn test_new() {
